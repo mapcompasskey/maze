@@ -13,14 +13,11 @@ ig.module(
         lightMap: null,
         shaderMap: null,
         redrawing: false,
-        lightenTiles: [],
-        brightestTile: 0, // transparent tile
-        darkestTile: 10, // opaque tile
+        ambientLight: 10, // 0 - 10 (transparent to opaque tiles)
         tilesShader: new ig.Image('media/shader.png'),
-        
+
         init: function (map) {
             
-            // get a reference to the collision layer
             var mapName = (map ? map : 'collision');
             this.shaderMap = ig.game.getMapByName(mapName);
             this.tileSize = this.shaderMap.tilesize;
@@ -34,12 +31,12 @@ ig.module(
                 data[y] = new Array(this.viewSize.x);
                 for (var x = 0; x < this.viewSize.x; x++)
                 {
-                    data[y][x] = this.darkestTile;
+                    data[y][x] = this.ambientLight;
                 }
             }
             
-            // create new background layer
             this.lightMap = new ig.BackgroundMap(this.tileSize, data, this.tilesShader);
+            
             this.redrawing = true;
             
         },
@@ -62,34 +59,26 @@ ig.module(
         
         // update background map
         redraw: function() {
+        
+            //console.log('redraw');
+            this.reset(this.ambientLight);
             
-            // reset the light layer
-            this.reset(this.darkestTile);
-            
-            // track entity positions
+            // update entity positions
             for (var i = 0; i < this.entities.length; i++)
             {
-                var radius = this.entities[i].shaderOptions.radius;
-                if ( ! isNaN(radius))
-                {
-                    var entityTile = this.getEntityTile(this.entities[i]);
-                    this.outlineCircle(entityTile.x, entityTile.y, radius);
-                    this.entities[i].shaderOptions.lastTile.x = entityTile.x;
-                    this.entities[i].shaderOptions.lastTile.y = entityTile.y;
-                }
+                var entityTile = this.getEntityTile(this.entities[i]);
+                this.calcShadeMap(entityTile.x, entityTile.y, this.entities[i].shaderOptions);
+                this.entities[i].shaderOptions.lastTile.x = entityTile.x;
+                this.entities[i].shaderOptions.lastTile.y = entityTile.y;
                 
-                //var entityTile = this.getEntityTile(this.entities[i]);
-                //this.calcShadeMap(entityTile.x, entityTile.y, this.entities[i].shaderOptions);
-                //this.entities[i].shaderOptions.lastTile.x = entityTile.x;
-                //this.entities[i].shaderOptions.lastTile.y = entityTile.y;
+                this.checkForWalls(entityTile.x, entityTile.y, (entityTile.x + 4), (entityTile.y + -4));
             }
             
         },
         
         // reset the background map
         reset: function (lightValue) {
-            
-            /*
+        
             for (var y = 0; y < this.viewSize.y; y++)
             {
                 for (var x = 0; x < this.viewSize.x; x++)
@@ -97,17 +86,6 @@ ig.module(
                     this.lightMap.data[y][x] = lightValue;
                 }
             }
-            */
-            
-            var y, x;
-            for (i = 0; i < this.lightenTiles.length; i++)
-            {
-                y = this.lightenTiles[i].y;
-                x = this.lightenTiles[i].x;
-                this.lightMap.data[y][x] = lightValue;
-            }
-            
-            this.lightenTiles = [];
             
         },
         
@@ -115,37 +93,27 @@ ig.module(
             
             var radius = shaderOptions.radius;
             
-            //this.fillCircle(x0, y0, 9, 9);
-            //this.fillCircle(x0, y0, 8, 8);
-            //this.fillCircle(x0, y0, 7, 7);
-            //this.fillCircle(x0, y0, 6, 6);
-            //this.fillCircle(x0, y0, 5, 5);
-            //this.fillCircle(x0, y0, 4, 4);
-            //this.fillCircle(x0, y0, 3, 3);
-            //this.fillCircle(x0, y0, 2, 2);
-            //this.fillCircle(x0, y0, 1, 1);
+            //this.drawCircle(x0, y0, 9, 9);
+            //this.drawCircle(x0, y0, 8, 8);
+            //this.drawCircle(x0, y0, 7, 7);
+            //this.drawCircle(x0, y0, 6, 6);
+            //this.drawCircle(x0, y0, 5, 5);
+            //this.drawCircle(x0, y0, 4, 4);
+            //this.drawCircle(x0, y0, 3, 3);
+            //this.drawCircle(x0, y0, 2, 2);
+            //this.drawCircle(x0, y0, 1, 1);
             //this.setTile(x0, y0);
             
-            /*
             for (var i = radius; i > 1; i--)
             {
-                this.fillCircle(x0, y0, i, 0);
+                this.drawCircle(x0, y0, i, 0);
             }
             this.setTile(x0, y0, 0);
-            */
-            
-            this.outlineCircle(x0, y0, radius);
             
         },
         
-        // fill in circle
-        fillCircle: function(x0, y0, radius, tile) {
-            
-            if (isNaN(x0)) return;
-            if (isNaN(y0)) return;
-            if (isNaN(radius)) return;
-            if (isNaN(tile)) return;
-            
+        drawCircle: function(x0, y0, radius, tile) {
+                
             // Bresenham's Algorithm
             var x = -radius;
             var y = 0;
@@ -178,49 +146,41 @@ ig.module(
             
         },
         
-        // draw outer edge of circle
-        outlineCircle: function(x0, y0, radius) {
+        setTile:function (x, y, tile) {
             
-            if (isNaN(x0)) return;
-            if (isNaN(y0)) return;
-            if (isNaN(radius)) return;
-            if (radius < 0) return;
+            if (x < 0) return;
+            if (y < 0) return;
+            if (x > (this.viewSize.x - 1)) return;
+            if (y > (this.viewSize.y - 1)) return;
             
-            var r = radius;
+            //if (this.shaderMap.data[y][x] != 0)
+            //{
+                //return;
+            //}
             
-            // Bresenham's Algorithm
-            var x = -radius;
-            var y = 0;
-            var err = 2 - (2 * radius);
-            do
-            {
-                // edge tiles
-                this.plotLines(x0, y0, (x0 - x), (y0 + y), r);
-                this.plotLines(x0, y0, (x0 - y), (y0 - x), r);
-                this.plotLines(x0, y0, (x0 + x), (y0 - y), r);
-                this.plotLines(x0, y0, (x0 + y), (y0 + x), r);
-                
-                // additional inner tiles to fill in missing holes
-                this.plotLines(x0, y0, (x0 - x - 1), (y0 + y), r);
-                this.plotLines(x0, y0, (x0 - y), (y0 - x - 1), r);
-                this.plotLines(x0, y0, (x0 + x + 1), (y0 - y), r);
-                this.plotLines(x0, y0, (x0 + y), (y0 + x + 1), r);
-                
-                radius = err;
-                if (radius <= y) err += ++y * 2 + 1;
-                if (radius > x || err > y) err += ++x * 2 + 1;
-            }
-            while (x < 0);
+            this.lightMap.data[y][x] = tile;
             
         },
         
-        // draw line from point (x0, y0) to point (x1, y1)
-        plotLines: function(x0, y0, x1, y1, radius) {
-            
-            if (isNaN(x0)) return;
-            if (isNaN(y0)) return;
-            if (isNaN(x1)) return;
-            if (isNaN(y1)) return;
+        // ray cast for walls
+        checkForWalls: function(x0, y0, x1, y1) {
+        
+            /*
+            void plotLine(int x0, int y0, int x1, int y1)
+            {
+               int dx =  abs(x1-x0), sx = x0<x1 ? 1 : -1;
+               int dy = -abs(y1-y0), sy = y0<y1 ? 1 : -1; 
+               int err = dx+dy, e2; // error value e_xy
+             
+               for(;;){  // loop
+                  setPixel(x0,y0);
+                  if (x0==x1 && y0==y1) break;
+                  e2 = 2*err;
+                  if (e2 >= dy) { err += dy; x0 += sx; } // e_xy+e_x > 0
+                  if (e2 <= dx) { err += dx; y0 += sy; } // e_xy+e_y < 0
+               }
+            }
+            */
             
             var dx = Math.abs(x1 - x0);
             var dy = Math.abs(y1 - y0) * -1;
@@ -231,35 +191,19 @@ ig.module(
             var err = (dx + dy);
             var e2;
             
-            var tile = 0;
-            var wall = false;
+            var tile = 5;
             
-            // (10 - 0) / 8
-            //var step = Math.abs((this.darkestTile - this.brightestTile) / radius);
-            
-            //var i = 0;
+            var i = 0;
             for (;;)
             {
-                //tile = Math.round(i * step);
-                //i++;
-                
-                // check for a wall
-                if (this.checkWall(x0, y0))
-                {
-                    wall = true;
-                }
-                // else, if there isn't a wall but there was one in the last loop
-                else if (wall)
-                {
-                    return;
-                }
-                
+                //console.log(x0, y0);
                 this.setTile(x0, y0, tile);
-                
-                if (x0 == x1 && y0 == y1)
+                if (this.shaderMap.data[y0][x0] != 0)
                 {
-                    return;
+                    tile = 9;
                 }
+                
+                if (x0 == x1 && y0 == y1) break;
                 
                 e2 = (2 * err);
                 
@@ -276,45 +220,6 @@ ig.module(
                 }
                 
             }
-            
-        },
-        
-        setTile: function(x, y, tile) {
-            
-            if (x < 0) return;
-            if (y < 0) return;
-            if (x > (this.viewSize.x - 1)) return;
-            if (y > (this.viewSize.y - 1)) return;
-            
-            this.lightMap.data[y][x] = tile;
-            
-            // track lighten tiles
-            if (tile != this.darkestTile)
-            {
-                this.lightenTiles.push({y: y, x: x});
-            }
-            
-        },
-        
-        checkWall: function(x, y) {
-            
-            if (x < 0) return true;
-            if (y < 0) return true;
-            if (x > (this.viewSize.x - 1)) return true;
-            if (y > (this.viewSize.y - 1)) return true;
-            
-            if (this.shaderMap.data[y])
-            {
-                if (this.shaderMap.data[y][x])
-                {
-                    if (this.shaderMap.data[y][x] > 0)
-                    {
-                        return true;
-                    }
-                }
-            }
-            
-            return false;
             
         },
         
@@ -357,7 +262,7 @@ ig.module(
             if (entity.shaderOptions === undefined)
             {
                 entity.shaderOptions = {};
-                entity.shaderOptions.radius = 8;
+                entity.shaderOptions.radius = 5;
                 entity.shaderOptions.innerRadius = 0;
                 entity.shaderOptions.outerRadius = 5;
             }
