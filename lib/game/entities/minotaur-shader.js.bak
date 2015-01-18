@@ -12,23 +12,13 @@ ig.module(
         radius: 8,
         entity: null,
         lastTile: {x:0, y:0},
+        map: null,
+        collisionMap: null,
         redrawing: false,
-        
+        alteredTiles: [],
         yellowTile: 2,
         redTile: 3,
-        //tilesShader: new ig.Image('media/minotaur-shader.png'),
-        
-        brightestTile: 0, // transparent tile
-        darkestTile: 10, // opaque tile
-        tilesShader: new ig.Image('media/shader4.png'),
-        
-        visionMap: null,
-        visionMapTiles: [],
-        
-        gradientMap: null,
-        gradientMapTiles: [],
-        
-        collisionMap: null,
+        tilesShader: new ig.Image('media/minotaur-shader.png'),
         
         init: function (map, entity) {
             
@@ -40,27 +30,19 @@ ig.module(
             this.viewSize.x = this.collisionMap.width + 1;
             this.viewSize.y = this.collisionMap.height + 1;
             
-            // each map needs its own array or they'll end up sharing the same one
-            var data1 = new Array(this.viewSize.y);
-            var data2 = new Array(this.viewSize.y);
+            var data = new Array(this.viewSize.y);
             for (var y = 0; y < this.viewSize.y; y++)
             {
-                data1[y] = new Array(this.viewSize.x);
-                data2[y] = new Array(this.viewSize.x);
+                data[y] = new Array(this.viewSize.x);
                 for (var x = 0; x < this.viewSize.x; x++)
                 {
-                    data1[y][x] = 0;
-                    data2[y][x] = 0;
+                    //data[y][x] = this.redTile;
+                    data[y][x] = 0;
                 }
             }
             
             // create new background layer
-            this.visionMap = new ig.BackgroundMap(this.tileSize, data1, this.tilesShader);
-            
-            // create a layer to store the smooth lighting
-            this.gradientMap = new ig.BackgroundMap(this.tileSize, data2, this.tilesShader);
-            
-            // start by redrawing the background layer
+            this.map = new ig.BackgroundMap(this.tileSize, data, this.tilesShader);
             this.redrawing = true;
             
             // reference the entity to track
@@ -80,15 +62,15 @@ ig.module(
             }
             
             // draw the background map to the screen
-            this.visionMap.draw();
+            this.map.draw();
             
         },
         
         // update light map
         redrawMap: function() {
             
-            // reset the background maps
-            this.resetMaps();
+            // reset the light layer
+            this.resetMap();
             
             // get entity position
             if (this.entity)
@@ -96,42 +78,28 @@ ig.module(
                 var entity = this.getEntityTile(this.entity);
                 this.lastTile.x = entity.x;
                 this.lastTile.y = entity.y;
-                
-                this.fillGradientCircle(entity.x, entity.y);
-                this.plotCircle(entity.x, entity.y);
+                this.outlineCircle(entity.x, entity.y);
             }
             
         },
         
-        // reset the background maps
-        resetMaps: function () {
+        // reset the light map
+        resetMap: function () {
             
             var y, x;
-            
-            // reset the vision map layer
-            for (i = 0; i < this.visionMapTiles.length; i++)
+            for (i = 0; i < this.alteredTiles.length; i++)
             {
-                y = this.visionMapTiles[i].y;
-                x = this.visionMapTiles[i].x;
-                this.visionMap.data[y][x] = this.brightestTile;
+                y = this.alteredTiles[i].y;
+                x = this.alteredTiles[i].x;
+                this.map.data[y][x] = 0;
             }
             
-            this.visionMapTiles = [];
-            
-            // reset the gradient map layer
-            for (i = 0; i < this.gradientMapTiles.length; i++)
-            {
-                y = this.gradientMapTiles[i].y;
-                x = this.gradientMapTiles[i].x;
-                this.gradientMap.data[y][x] = this.brightestTile;
-            }
-            
-            this.gradientMapTiles = [];
+            this.alteredTiles = [];
             
         },
         
         // draw outer edge of circle
-        plotCircle: function(x0, y0) {
+        outlineCircle: function(x0, y0) {
             
             if (isNaN(x0)) return;
             if (isNaN(y0)) return;
@@ -144,16 +112,16 @@ ig.module(
             do
             {
                 // edge tiles
-                this.plotLine(x0, y0, (x0 - x), (y0 + y));
-                this.plotLine(x0, y0, (x0 - y), (y0 - x));
-                this.plotLine(x0, y0, (x0 + x), (y0 - y));
-                this.plotLine(x0, y0, (x0 + y), (y0 + x));
+                this.plotLines(x0, y0, (x0 - x), (y0 + y));
+                this.plotLines(x0, y0, (x0 - y), (y0 - x));
+                this.plotLines(x0, y0, (x0 + x), (y0 - y));
+                this.plotLines(x0, y0, (x0 + y), (y0 + x));
                 
                 // additional inner tiles to fill in missing holes
-                this.plotLine(x0, y0, (x0 - x - 1), (y0 + y));
-                this.plotLine(x0, y0, (x0 - y), (y0 - x - 1));
-                this.plotLine(x0, y0, (x0 + x + 1), (y0 - y));
-                this.plotLine(x0, y0, (x0 + y), (y0 + x + 1));
+                this.plotLines(x0, y0, (x0 - x - 1), (y0 + y));
+                this.plotLines(x0, y0, (x0 - y), (y0 - x - 1));
+                this.plotLines(x0, y0, (x0 + x + 1), (y0 - y));
+                this.plotLines(x0, y0, (x0 + y), (y0 + x + 1));
                 
                 radius = err;
                 if (radius <= y) err += ++y * 2 + 1;
@@ -164,7 +132,7 @@ ig.module(
         },
         
         // draw line from point (x0, y0) to point (x1, y1)
-        plotLine: function(x0, y0, x1, y1) {
+        plotLines: function(x0, y0, x1, y1) {
             
             if (isNaN(x0)) return;
             if (isNaN(y0)) return;
@@ -182,7 +150,7 @@ ig.module(
             
             var radius = this.radius;
             
-            //var i = 0;
+            var i = 0;
             for (;;)
             {
                 // check for a wall
@@ -191,8 +159,7 @@ ig.module(
                     return;
                 }
                 
-                //this.setVisionTile(x0, y0, i);
-                this.setVisionTile(x0, y0);
+                this.setTile(x0, y0, i);
                 
                 if (x0 == x1 && y0 == y1)
                 {
@@ -213,65 +180,12 @@ ig.module(
                     y0 += sy;
                 }
                 
-                //i++;
+                i++;
             }
             
         },
         
-        // draw circle and fill it with a radial gradient
-        fillGradientCircle: function(x0, y0) {
-        
-            var outerRadius = this.radius;
-            var innerRadius = 0;
-            var stepSize = Math.round(this.darkestTile / (outerRadius - innerRadius));
-            for (var i = outerRadius; i > innerRadius; i--)
-            {
-                var d = 3 - (2 * i);
-                var x = 0;
-                var y = i;
-                var shade = (i - 1 - innerRadius) * stepSize;
-                if (shade > this.darkestTile) shade = this.darkestTile;
-                if (shade < 0) shade = 0;
-                
-                do {
-                    this.setGradientTile(y0 - y, x0 + x, shade);
-                    this.setGradientTile(y0 - y, x0 - x, shade);
-                    this.setGradientTile(y0 + y, x0 - x, shade);
-                    this.setGradientTile(y0 + y, x0 + x, shade);
-                    this.setGradientTile(y0 + x, x0 + y, shade);
-                    this.setGradientTile(y0 - x, x0 + y, shade);
-                    this.setGradientTile(y0 + x, x0 - y, shade);
-                    this.setGradientTile(y0 - x, x0 - y, shade);
-                    
-                    // additional inner tiles to fill in missing holes
-                    this.setGradientTile(y0 - x, x0 - y + 1, shade);
-                    this.setGradientTile(y0 + x, x0 - y + 1, shade);
-                    this.setGradientTile(y0 - x, x0 + y - 1, shade);
-                    this.setGradientTile(y0 + x, x0 + y - 1, shade);
-                    this.setGradientTile(y0 + y - 1, x0 + x, shade);
-                    this.setGradientTile(y0 + y - 1, x0 - x, shade);
-                    this.setGradientTile(y0 - y + 1, x0 - x, shade);
-                    this.setGradientTile(y0 - y + 1, x0 + x, shade);
-                    
-                    if (d < 0)
-                    {
-                        d = d + (4 * x) + 6;
-                    }
-                    else
-                    {
-                        d = d + 4 * (x - y) + 10;
-                        y--;
-                    }
-                    x++;
-                }
-                while (x <= y);
-            }
-            
-        },
-        
-        // update a tile in the vision map
-        //setVisionTile: function(x, y, i) {
-        setVisionTile: function(x, y) {
+        setTile: function(x, y, i) {
             
             if (x < 0) return;
             if (y < 0) return;
@@ -279,32 +193,13 @@ ig.module(
             if (y > (this.viewSize.y - 1)) return;
             
             // update tile
-            //this.visionMap.data[y][x] = (i < 4 ? this.redTile : this.yellowTile);
-            this.visionMap.data[y][x] = this.gradientMap.data[y][x];
+            this.map.data[y][x] = (i < 4 ? this.redTile : this.yellowTile);
             
             // track updated tile
-            this.visionMapTiles.push({y: y, x: x});
+            this.alteredTiles.push({y: y, x: x});
             
         },
         
-        // update a tile in the gradient map
-        setGradientTile: function(y, x, tile) {
-            
-            if (x < 0) return;
-            if (y < 0) return;
-            if (x > (this.viewSize.x - 1)) return;
-            if (y > (this.viewSize.y - 1)) return;
-            if (isNaN(tile)) return;
-            
-            // update tile
-            this.gradientMap.data[y][x] = (tile < 1 ? 1 : tile);
-            
-            // track updated tile
-            this.gradientMapTiles.push({y: y, x: x});
-            
-        },
-        
-        // check for a wall in the collision map
         checkWall: function(x, y) {
             
             if (x < 0) return true;
